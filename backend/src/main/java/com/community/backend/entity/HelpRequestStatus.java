@@ -1,5 +1,4 @@
 package com.community.backend.entity;
-
 public enum HelpRequestStatus {
-    OPEN, ACCEPTED, COMPLETED, EXPIRED;
+    OPEN, ACCEPTED, EN_ROUTE, ARRIVED, IN_PROGRESS, COMPLETION_PENDING, COMPLETED, CANCELLED, EXPIRED, DISPUTED;
 }

@@ -1,5 +1,6 @@
 package com.community.backend.exception;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -19,5 +20,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public String handleIllegalStateException(IllegalStateException exception) {
         return exception.getMessage();
+    }
+    @ResponseStatus(HttpStatus.CONFLICT)
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public String handleOptimisticLockingFailureException(ObjectOptimisticLockingFailureException exception) {
+        return "Help request was updated by another user. Please try again";
     }
 }
