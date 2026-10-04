@@ -1,8 +1,12 @@
 package com.community.backend.service;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.community.backend.dto.SOSResponse;
+import com.community.backend.dto.SafetyCheckInResponse;
+import com.community.backend.dto.TrustedContactResponse;
 import com.community.backend.entity.HelpRequest;
 import com.community.backend.entity.HelpRequestStatus;
 import com.community.backend.entity.SOSIncident;
@@ -24,28 +28,39 @@ public class SafetyService {
     private SafetyCheckInRepository safetyCheckInRepository;
     private TrustedContactRepository trustedContactRepository;
     private SOSIncidentRepository sosIncidentRepository;
-    public SafetyService(HelpRequestRepository helpRequestRepository,UserRepository userRepository,SafetyCheckInRepository safetyCheckInRepository,TrustedContactRepository trustedContactRepository,SOSIncidentRepository sosIncidentRepository) {
+    private AuditService auditService;
+    public SafetyService(HelpRequestRepository helpRequestRepository,UserRepository userRepository,SafetyCheckInRepository safetyCheckInRepository,TrustedContactRepository trustedContactRepository,SOSIncidentRepository sosIncidentRepository,AuditService auditService) {
         this.helpRequestRepository=helpRequestRepository;
         this.userRepository=userRepository;
         this.safetyCheckInRepository=safetyCheckInRepository;
         this.trustedContactRepository=trustedContactRepository;
         this.sosIncidentRepository=sosIncidentRepository;
+        this.auditService=auditService;
     }
-    public SafetyCheckIn createCheckIn(Long id,String email) {
+    @Transactional
+    public SafetyCheckInResponse createCheckIn(Long id,String email) {
         HelpRequest request=getRequest(id);
         User user=getUser(email);
         validateParticipant(request,email);
         if(request.getStatus()!=HelpRequestStatus.IN_PROGRESS) {
             throw new IllegalStateException("Safety check-in is only available during active assistance");
         }
+        safetyCheckInRepository.findTopByHelpRequestAndUserOrderByCreatedAtDesc(request,user).ifPresent(existing -> {
+            if(existing.getStatus()==SafetyCheckInStatus.PENDING) {
+                throw new IllegalStateException("A safety check-in is already pending");
+            }
+        });
         SafetyCheckIn checkIn=new SafetyCheckIn();
         checkIn.setHelpRequest(request);
         checkIn.setUser(user);
         checkIn.setStatus(SafetyCheckInStatus.PENDING);
         checkIn.setCreatedAt(LocalDateTime.now());
-        return safetyCheckInRepository.save(checkIn);
+        checkIn=safetyCheckInRepository.save(checkIn);
+        auditService.record(request,user,"SAFETY_CHECKIN_CREATED","PENDING");
+        return toCheckInResponse(checkIn);
     }
-    public SafetyCheckIn markSafe(Long checkInId,String email) {
+    @Transactional
+    public SafetyCheckInResponse markSafe(Long checkInId,String email) {
         SafetyCheckIn checkIn=safetyCheckInRepository.findById(checkInId).orElseThrow(()->new ResourceNotFoundException("Safety check-in not found"));
         if(!checkIn.getUser().getEmail().equals(email)) {
             throw new UnauthorizedException("User is not authorized to respond to this check-in");
@@ -53,21 +68,36 @@ public class SafetyService {
         if(checkIn.getStatus()!=SafetyCheckInStatus.PENDING) {
             throw new IllegalStateException("Safety check-in is no longer pending");
         }
+        if(checkIn.getHelpRequest().getStatus()!=HelpRequestStatus.IN_PROGRESS) {
+            throw new IllegalStateException("Safety check-in is no longer active");
+        }
         checkIn.setStatus(SafetyCheckInStatus.SAFE);
         checkIn.setRespondedAt(LocalDateTime.now());
-        return safetyCheckInRepository.save(checkIn);
+        checkIn=safetyCheckInRepository.save(checkIn);
+        auditService.record(checkIn.getHelpRequest(),checkIn.getUser(),"SAFETY_CHECKIN_SAFE","SAFE");
+        return toCheckInResponse(checkIn);
     }
-    public List<TrustedContact> getTrustedContacts(String email) {
-        return trustedContactRepository.findByUser(getUser(email));
+    public List<TrustedContactResponse> getTrustedContacts(String email) {
+        User user=getUser(email);
+        return trustedContactRepository.findByUser(user).stream().map(this::toTrustedContactResponse).collect(Collectors.toList());
     }
-    public TrustedContact addTrustedContact(String email,String name,String phone) {
+    @Transactional
+    public TrustedContactResponse addTrustedContact(String email,String name,String phone) {
+        if(name==null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Trusted contact name is required");
+        }
+        if(phone==null || phone.trim().isEmpty()) {
+            throw new IllegalArgumentException("Trusted contact phone is required");
+        }
         User user=getUser(email);
         TrustedContact contact=new TrustedContact();
         contact.setUser(user);
-        contact.setName(name);
-        contact.setPhone(phone);
-        return trustedContactRepository.save(contact);
+        contact.setName(name.trim());
+        contact.setPhone(phone.trim());
+        contact=trustedContactRepository.save(contact);
+        return toTrustedContactResponse(contact);
     }
+    @Transactional
     public void deleteTrustedContact(Long id,String email) {
         TrustedContact contact=trustedContactRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("Trusted contact not found"));
         if(!contact.getUser().getEmail().equals(email)) {
@@ -75,21 +105,30 @@ public class SafetyService {
         }
         trustedContactRepository.delete(contact);
     }
-    public SOSIncident triggerSOS(Long id,String email) {
+    @Transactional
+    public SOSResponse triggerSOS(Long id,String email) {
         HelpRequest request=getRequest(id);
         User user=getUser(email);
         validateParticipant(request,email);
-        if(request.getStatus()==HelpRequestStatus.COMPLETED || request.getStatus()==HelpRequestStatus.CANCELLED) {
+        if(request.getStatus()==HelpRequestStatus.COMPLETED || request.getStatus()==HelpRequestStatus.CANCELLED || request.getStatus()==HelpRequestStatus.EXPIRED) {
             throw new IllegalStateException("SOS cannot be triggered for a completed or cancelled request");
         }
+        sosIncidentRepository.findTopByHelpRequestOrderByCreatedAtDesc(request).ifPresent(existing -> {
+            if("ACTIVE".equals(existing.getStatus())) {
+                throw new IllegalStateException("An active SOS already exists for this request");
+            }
+        });
         SOSIncident incident=new SOSIncident();
         incident.setHelpRequest(request);
         incident.setTriggeredBy(user);
         incident.setStatus("ACTIVE");
         incident.setCreatedAt(LocalDateTime.now());
-        return sosIncidentRepository.save(incident);
+        incident=sosIncidentRepository.save(incident);
+        auditService.record(request,user,"SOS_TRIGGERED","ACTIVE");
+        return toSOSResponse(incident);
     }
-    public SOSIncident resolveSOS(Long id,String email) {
+    @Transactional
+    public SOSResponse resolveSOS(Long id,String email) {
         SOSIncident incident=sosIncidentRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("SOS incident not found"));
         validateParticipant(incident.getHelpRequest(),email);
         if(!"ACTIVE".equals(incident.getStatus())) {
@@ -97,7 +136,19 @@ public class SafetyService {
         }
         incident.setStatus("RESOLVED");
         incident.setResolvedAt(LocalDateTime.now());
-        return sosIncidentRepository.save(incident);
+        incident=sosIncidentRepository.save(incident);
+        User user=getUser(email);
+        auditService.record(incident.getHelpRequest(),user,"SOS_RESOLVED","RESOLVED");
+        return toSOSResponse(incident);
+    }
+    private SafetyCheckInResponse toCheckInResponse(SafetyCheckIn checkIn) {
+        return new SafetyCheckInResponse(checkIn.getId(),checkIn.getHelpRequest().getId(),checkIn.getStatus(),checkIn.getCreatedAt(),checkIn.getRespondedAt());
+    }
+    private TrustedContactResponse toTrustedContactResponse(TrustedContact contact) {
+        return new TrustedContactResponse(contact.getId(),contact.getName(),contact.getPhone());
+    }
+    private SOSResponse toSOSResponse(SOSIncident incident) {
+        return new SOSResponse(incident.getId(),incident.getHelpRequest().getId(),incident.getStatus(),incident.getCreatedAt(),incident.getResolvedAt());
     }
     private HelpRequest getRequest(Long id) {
         return helpRequestRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("Help request not found"));

@@ -3,6 +3,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.community.backend.dto.TrackingLocationRequest;
 import com.community.backend.dto.TrackingLocationResponse;
 import com.community.backend.entity.HelpRequest;
@@ -19,11 +20,14 @@ public class TrackingService {
     private HelpRequestRepository helpRequestRepository;
     private TrackingLocationRepository trackingLocationRepository;
     private UserRepository userRepository;
-    public TrackingService(HelpRequestRepository helpRequestRepository,TrackingLocationRepository trackingLocationRepository,UserRepository userRepository) {
+    private AuditService auditService;
+    public TrackingService(HelpRequestRepository helpRequestRepository,TrackingLocationRepository trackingLocationRepository,UserRepository userRepository,AuditService auditService) {
         this.helpRequestRepository=helpRequestRepository;
         this.trackingLocationRepository=trackingLocationRepository;
         this.userRepository=userRepository;
+        this.auditService=auditService;
     }
+    @Transactional
     public TrackingLocationResponse updateLocation(Long id,TrackingLocationRequest request,String email) {
         HelpRequest helpRequest=getRequest(id);
         User helper=getUser(email);
@@ -46,6 +50,7 @@ public class TrackingService {
         location.setLongitude(request.getLongitude());
         location.setRecordedAt(LocalDateTime.now());
         location=trackingLocationRepository.save(location);
+        auditService.record(helpRequest,helper,"LOCATION_UPDATED","TRACKING_LOCATION");
         return toResponse(location);
     }
     public TrackingLocationResponse getLatestLocation(Long id,String email) {

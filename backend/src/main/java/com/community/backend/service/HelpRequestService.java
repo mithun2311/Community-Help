@@ -4,10 +4,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import com.community.backend.dto.CreateHelpRequest;
 import com.community.backend.dto.HelpRequestResponse;
 import com.community.backend.dto.LocationResponse;
@@ -26,11 +24,13 @@ public class HelpRequestService {
     private HelpRequestRepository helpRequestRepository;
     private HelpRequestLocationRepository helpRequestLocationRepository;
     private UserRepository userRepository;
+    private AuditService auditService;
     private SecureRandom secureRandom=new SecureRandom();
-    public HelpRequestService(HelpRequestRepository helpRequestRepository,HelpRequestLocationRepository helpRequestLocationRepository,UserRepository userRepository) {
+    public HelpRequestService(HelpRequestRepository helpRequestRepository,HelpRequestLocationRepository helpRequestLocationRepository,UserRepository userRepository,AuditService auditService) {
         this.helpRequestRepository=helpRequestRepository;
         this.helpRequestLocationRepository=helpRequestLocationRepository;
         this.userRepository=userRepository;
+        this.auditService=auditService;
     }
     @Transactional
     public HelpRequestResponse createRequest(CreateHelpRequest request,String email){
@@ -70,6 +70,7 @@ public class HelpRequestService {
         helpRequestLocation.setApproximateLongitude(approximateLongitude);
         helpRequestLocation.setPrivacyRadiusMeters((int)distance);
         helpRequestLocationRepository.save(helpRequestLocation);
+        auditService.record(helpRequest,existingUser,"REQUEST_CREATED","OPEN");
         HelpRequestResponse response=new HelpRequestResponse();
         response.setId(helpRequest.getId());
         response.setTitle(helpRequest.getTitle());
@@ -109,6 +110,7 @@ public class HelpRequestService {
         response.setStatus(existingHelpRequest.getStatus());
         return response;
     }
+    @Transactional
     public HelpRequestResponse updateHelpRequest(Long id,UpdateHelpRequest request,String email) {
         Optional<HelpRequest> helpRequest=helpRequestRepository.findById(id);
         if(helpRequest.isEmpty()) {
@@ -126,6 +128,7 @@ public class HelpRequestService {
         req.setUrgency(request.getUrgency());
         req.setUpdatedAt(LocalDateTime.now());
         req=helpRequestRepository.save(req);
+        auditService.record(req,req.getCreator(),"REQUEST_UPDATED","OPEN");
         HelpRequestResponse response=new HelpRequestResponse();
         response.setId(req.getId());
         response.setTitle(req.getTitle());
@@ -135,6 +138,7 @@ public class HelpRequestService {
         response.setStatus(req.getStatus());
         return response;
     }
+    @Transactional
     public HelpRequestResponse acceptHelpRequest(Long id,String email) {
         Optional<HelpRequest> helpRequest=helpRequestRepository.findById(id);
         if(helpRequest.isEmpty()) {
@@ -156,6 +160,7 @@ public class HelpRequestService {
         req.setStatus(HelpRequestStatus.ACCEPTED);
         req.setUpdatedAt(LocalDateTime.now());
         req=helpRequestRepository.save(req);
+        auditService.record(req,helper,"REQUEST_ACCEPTED","ACCEPTED");
         HelpRequestResponse response=new HelpRequestResponse();
         response.setId(req.getId());
         response.setTitle(req.getTitle());
@@ -165,6 +170,7 @@ public class HelpRequestService {
         response.setStatus(req.getStatus());
         return response;
     }
+    @Transactional
     public HelpRequestResponse startJourney(Long id,String email) {
         Optional<HelpRequest> helpRequest=helpRequestRepository.findById(id);
         if(helpRequest.isEmpty()) {
@@ -180,6 +186,7 @@ public class HelpRequestService {
         req.setStatus(HelpRequestStatus.EN_ROUTE);
         req.setUpdatedAt(LocalDateTime.now());
         req=helpRequestRepository.save(req);
+        auditService.record(req,req.getHelper(),"EN_ROUTE_STARTED","EN_ROUTE");
         HelpRequestResponse response=new HelpRequestResponse();
         response.setId(req.getId());
         response.setTitle(req.getTitle());
@@ -189,6 +196,7 @@ public class HelpRequestService {
         response.setStatus(req.getStatus());
         return response;
     }
+    @Transactional
     public HelpRequestResponse markArrived(Long id,String email) {
         Optional<HelpRequest> helpRequest=helpRequestRepository.findById(id);
         if(helpRequest.isEmpty()) {
@@ -204,6 +212,7 @@ public class HelpRequestService {
         req.setStatus(HelpRequestStatus.ARRIVED);
         req.setUpdatedAt(LocalDateTime.now());
         req=helpRequestRepository.save(req);
+        auditService.record(req,req.getHelper(),"ARRIVED","ARRIVED");
         HelpRequestResponse response=new HelpRequestResponse();
         response.setId(req.getId());
         response.setTitle(req.getTitle());
@@ -213,6 +222,7 @@ public class HelpRequestService {
         response.setStatus(req.getStatus());
         return response;
     }
+    @Transactional
     public HelpRequestResponse startAssistance(Long id,String email) {
         Optional<HelpRequest> helpRequest=helpRequestRepository.findById(id);
         if(helpRequest.isEmpty()) {
@@ -230,6 +240,8 @@ public class HelpRequestService {
         req.setStatus(HelpRequestStatus.IN_PROGRESS);
         req.setUpdatedAt(LocalDateTime.now());
         req=helpRequestRepository.save(req);
+        User actor=isHelper ? req.getHelper() : req.getCreator();
+        auditService.record(req,actor,"ASSISTANCE_STARTED","IN_PROGRESS");
         HelpRequestResponse response=new HelpRequestResponse();
         response.setId(req.getId());
         response.setTitle(req.getTitle());
@@ -239,6 +251,7 @@ public class HelpRequestService {
         response.setStatus(req.getStatus());
         return response;
     }
+    @Transactional
     public HelpRequestResponse requestCompletion(Long id,String email) {
         Optional<HelpRequest> helpRequest=helpRequestRepository.findById(id);
         if(helpRequest.isEmpty()) {
@@ -256,6 +269,8 @@ public class HelpRequestService {
         req.setStatus(HelpRequestStatus.COMPLETION_PENDING);
         req.setUpdatedAt(LocalDateTime.now());
         req=helpRequestRepository.save(req);
+        User actor=isHelper ? req.getHelper() : req.getCreator();
+        auditService.record(req,actor,"COMPLETION_REQUESTED","COMPLETION_PENDING");
         HelpRequestResponse response=new HelpRequestResponse();
         response.setId(req.getId());
         response.setTitle(req.getTitle());
@@ -265,6 +280,7 @@ public class HelpRequestService {
         response.setStatus(req.getStatus());
         return response;
     }
+    @Transactional
     public HelpRequestResponse completeHelpRequest(Long id,String email) {
         Optional<HelpRequest> helpRequest=helpRequestRepository.findById(id);
         if(helpRequest.isEmpty()) {
@@ -282,6 +298,8 @@ public class HelpRequestService {
         req.setStatus(HelpRequestStatus.COMPLETED);
         req.setUpdatedAt(LocalDateTime.now());
         req=helpRequestRepository.save(req);
+        User actor=isHelper ? req.getHelper() : req.getCreator();
+        auditService.record(req,actor,"REQUEST_COMPLETED","COMPLETED");
         HelpRequestResponse response=new HelpRequestResponse();
         response.setId(req.getId());
         response.setTitle(req.getTitle());
@@ -291,6 +309,7 @@ public class HelpRequestService {
         response.setStatus(req.getStatus());
         return response;
     }
+    @Transactional
     public HelpRequestResponse cancelHelpRequest(Long id,String email) {
         Optional<HelpRequest> helpRequest=helpRequestRepository.findById(id);
         if(helpRequest.isEmpty()) {
@@ -305,14 +324,19 @@ public class HelpRequestService {
         if(!isCreator && !isHelper) {
             throw new UnauthorizedException("User is not authorized to cancel the request");
         }
+        User actor=isHelper ? req.getHelper() : req.getCreator();
+        String eventType;
         if(isHelper && !isCreator) {
             req.setHelper(null);
             req.setStatus(HelpRequestStatus.OPEN);
+            eventType="HELPER_WITHDREW";
         } else {
             req.setStatus(HelpRequestStatus.CANCELLED);
+            eventType="REQUEST_CANCELLED";
         }
         req.setUpdatedAt(LocalDateTime.now());
         req=helpRequestRepository.save(req);
+        auditService.record(req,actor,eventType,req.getStatus().name());
         HelpRequestResponse response=new HelpRequestResponse();
         response.setId(req.getId());
         response.setTitle(req.getTitle());
