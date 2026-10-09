@@ -32,8 +32,12 @@ public class HelpRequest {
     @ManyToOne
     @JoinColumn(name="helper_id")
     private User helper;
+    @ManyToOne
+    @JoinColumn(name="completion_requested_by_id")
+    private User completionRequestedBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDateTime expiresAt;
     public Long getId() {
         return id;
     }
@@ -58,11 +62,17 @@ public class HelpRequest {
     public User getHelper() {
         return helper;
     }
+    public User getCompletionRequestedBy() {
+        return completionRequestedBy;
+    }
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
+    }
+    public LocalDateTime getExpiresAt() {
+        return expiresAt;
     }
     public void setTitle(String title) {
         this.title=title;
@@ -85,10 +95,16 @@ public class HelpRequest {
     public void setHelper(User helper) {
         this.helper=helper;
     }
+    public void setCompletionRequestedBy(User completionRequestedBy) {
+        this.completionRequestedBy=completionRequestedBy;
+    }
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt=createdAt;
     }
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt=updatedAt;
+    }
+    public void setExpiresAt(LocalDateTime expiresAt) {
+        this.expiresAt=expiresAt;
     }
 }

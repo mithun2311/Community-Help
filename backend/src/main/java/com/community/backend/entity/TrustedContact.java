@@ -16,6 +16,7 @@ public class TrustedContact {
     private User user;
     private String name;
     private String phone;
+    private String email;
     public Long getId() {
         return id;
     }
@@ -28,6 +29,9 @@ public class TrustedContact {
     public String getPhone() {
         return phone;
     }
+    public String getEmail() {
+        return email;
+    }
     public void setUser(User user) {
         this.user=user;
     }
@@ -36,5 +40,8 @@ public class TrustedContact {
     }
     public void setPhone(String phone) {
         this.phone=phone;
+    }
+    public void setEmail(String email) {
+        this.email=email;
     }
 }

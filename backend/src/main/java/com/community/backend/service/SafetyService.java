@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 import com.community.backend.dto.SOSResponse;
 import com.community.backend.dto.SafetyCheckInResponse;
 import com.community.backend.dto.TrustedContactResponse;
@@ -14,6 +15,7 @@ import com.community.backend.entity.SafetyCheckIn;
 import com.community.backend.entity.SafetyCheckInStatus;
 import com.community.backend.entity.TrustedContact;
 import com.community.backend.entity.User;
+import com.community.backend.event.SosTriggeredEvent;
 import com.community.backend.exception.ResourceNotFoundException;
 import com.community.backend.exception.UnauthorizedException;
 import com.community.backend.repository.HelpRequestRepository;
@@ -29,13 +31,15 @@ public class SafetyService {
     private TrustedContactRepository trustedContactRepository;
     private SOSIncidentRepository sosIncidentRepository;
     private AuditService auditService;
-    public SafetyService(HelpRequestRepository helpRequestRepository,UserRepository userRepository,SafetyCheckInRepository safetyCheckInRepository,TrustedContactRepository trustedContactRepository,SOSIncidentRepository sosIncidentRepository,AuditService auditService) {
+    private ApplicationEventPublisher eventPublisher;
+    public SafetyService(HelpRequestRepository helpRequestRepository,UserRepository userRepository,SafetyCheckInRepository safetyCheckInRepository,TrustedContactRepository trustedContactRepository,SOSIncidentRepository sosIncidentRepository,AuditService auditService,ApplicationEventPublisher eventPublisher) {
         this.helpRequestRepository=helpRequestRepository;
         this.userRepository=userRepository;
         this.safetyCheckInRepository=safetyCheckInRepository;
         this.trustedContactRepository=trustedContactRepository;
         this.sosIncidentRepository=sosIncidentRepository;
         this.auditService=auditService;
+        this.eventPublisher=eventPublisher;
     }
     @Transactional
     public SafetyCheckInResponse createCheckIn(Long id,String email) {
@@ -82,7 +86,7 @@ public class SafetyService {
         return trustedContactRepository.findByUser(user).stream().map(this::toTrustedContactResponse).collect(Collectors.toList());
     }
     @Transactional
-    public TrustedContactResponse addTrustedContact(String email,String name,String phone) {
+    public TrustedContactResponse addTrustedContact(String email,String name,String phone,String contactEmail) {
         if(name==null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Trusted contact name is required");
         }
@@ -94,6 +98,7 @@ public class SafetyService {
         contact.setUser(user);
         contact.setName(name.trim());
         contact.setPhone(phone.trim());
+        contact.setEmail(contactEmail==null || contactEmail.isBlank()?null:contactEmail.trim().toLowerCase(java.util.Locale.ROOT));
         contact=trustedContactRepository.save(contact);
         return toTrustedContactResponse(contact);
     }
@@ -110,7 +115,7 @@ public class SafetyService {
         HelpRequest request=getRequest(id);
         User user=getUser(email);
         validateParticipant(request,email);
-        if(request.getStatus()==HelpRequestStatus.COMPLETED || request.getStatus()==HelpRequestStatus.CANCELLED || request.getStatus()==HelpRequestStatus.EXPIRED) {
+        if(request.getStatus()==HelpRequestStatus.COMPLETED || request.getStatus()==HelpRequestStatus.CANCELLED || request.getStatus()==HelpRequestStatus.EXPIRED || request.getStatus()==HelpRequestStatus.DISPUTED) {
             throw new IllegalStateException("SOS cannot be triggered for a completed or cancelled request");
         }
         sosIncidentRepository.findTopByHelpRequestOrderByCreatedAtDesc(request).ifPresent(existing -> {
@@ -125,6 +130,7 @@ public class SafetyService {
         incident.setCreatedAt(LocalDateTime.now());
         incident=sosIncidentRepository.save(incident);
         auditService.record(request,user,"SOS_TRIGGERED","ACTIVE");
+        eventPublisher.publishEvent(new SosTriggeredEvent(incident,trustedContactRepository.findByUser(user)));
         return toSOSResponse(incident);
     }
     @Transactional
@@ -145,7 +151,7 @@ public class SafetyService {
         return new SafetyCheckInResponse(checkIn.getId(),checkIn.getHelpRequest().getId(),checkIn.getStatus(),checkIn.getCreatedAt(),checkIn.getRespondedAt());
     }
     private TrustedContactResponse toTrustedContactResponse(TrustedContact contact) {
-        return new TrustedContactResponse(contact.getId(),contact.getName(),contact.getPhone());
+        return new TrustedContactResponse(contact.getId(),contact.getName(),contact.getPhone(),contact.getEmail());
     }
     private SOSResponse toSOSResponse(SOSIncident incident) {
         return new SOSResponse(incident.getId(),incident.getHelpRequest().getId(),incident.getStatus(),incident.getCreatedAt(),incident.getResolvedAt());

@@ -1,4 +1,5 @@
 package com.community.backend.controller;
+import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,7 +19,7 @@ public class TrackingController {
         this.trackingService=trackingService;
     }
     @PostMapping("/{id}/tracking/location")
-    public TrackingLocationResponse updateLocation(@PathVariable Long id,@RequestBody TrackingLocationRequest request) {
+    public TrackingLocationResponse updateLocation(@PathVariable Long id,@Valid @RequestBody TrackingLocationRequest request) {
         return trackingService.updateLocation(id,request,getEmail());
     }
     @GetMapping("/{id}/tracking/location")

@@ -3,6 +3,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import com.community.backend.dto.TrackingLocationRequest;
 import com.community.backend.dto.TrackingLocationResponse;
@@ -21,11 +22,13 @@ public class TrackingService {
     private TrackingLocationRepository trackingLocationRepository;
     private UserRepository userRepository;
     private AuditService auditService;
-    public TrackingService(HelpRequestRepository helpRequestRepository,TrackingLocationRepository trackingLocationRepository,UserRepository userRepository,AuditService auditService) {
+    private SimpMessagingTemplate messagingTemplate;
+    public TrackingService(HelpRequestRepository helpRequestRepository,TrackingLocationRepository trackingLocationRepository,UserRepository userRepository,AuditService auditService,SimpMessagingTemplate messagingTemplate) {
         this.helpRequestRepository=helpRequestRepository;
         this.trackingLocationRepository=trackingLocationRepository;
         this.userRepository=userRepository;
         this.auditService=auditService;
+        this.messagingTemplate=messagingTemplate;
     }
     @Transactional
     public TrackingLocationResponse updateLocation(Long id,TrackingLocationRequest request,String email) {
@@ -51,7 +54,9 @@ public class TrackingService {
         location.setRecordedAt(LocalDateTime.now());
         location=trackingLocationRepository.save(location);
         auditService.record(helpRequest,helper,"LOCATION_UPDATED","TRACKING_LOCATION");
-        return toResponse(location);
+        TrackingLocationResponse response=toResponse(location);
+        messagingTemplate.convertAndSend("/topic/requests/"+helpRequest.getId()+"/tracking",response);
+        return response;
     }
     public TrackingLocationResponse getLatestLocation(Long id,String email) {
         HelpRequest helpRequest=getRequest(id);
@@ -60,7 +65,7 @@ public class TrackingService {
         if(!creator && !helper) {
             throw new UnauthorizedException("User is not authorized to access live tracking");
         }
-        if(helpRequest.getStatus()==HelpRequestStatus.COMPLETED || helpRequest.getStatus()==HelpRequestStatus.CANCELLED || helpRequest.getStatus()==HelpRequestStatus.EXPIRED) {
+        if(helpRequest.getStatus()==HelpRequestStatus.COMPLETED || helpRequest.getStatus()==HelpRequestStatus.CANCELLED || helpRequest.getStatus()==HelpRequestStatus.EXPIRED || helpRequest.getStatus()==HelpRequestStatus.DISPUTED) {
             throw new IllegalStateException("Live tracking is no longer active");
         }
         Optional<TrackingLocation> location=trackingLocationRepository.findTopByHelpRequestOrderByRecordedAtDesc(helpRequest);

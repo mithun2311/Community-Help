@@ -1,4 +1,5 @@
 package com.community.backend.controller;
+import jakarta.validation.Valid;
 
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -8,7 +9,6 @@ import org.springframework.web.bind.annotation.RestController;
 import com.community.backend.dto.LoginRequest;
 import com.community.backend.dto.RegisterRequest;
 import com.community.backend.service.AuthService;
-import com.community.backend.service.JwtService;
 
 
 @RestController
@@ -16,18 +16,15 @@ import com.community.backend.service.JwtService;
 public class AuthController {
 
     private AuthService authService;
-    private JwtService jwtService;
-    public AuthController(AuthService authService, JwtService jwtService) {
+    public AuthController(AuthService authService) {
         this.authService=authService;
-        this.jwtService=jwtService;
     }
     @PostMapping("/register")
-    public String register(@RequestBody RegisterRequest request) {
+    public String register(@Valid @RequestBody RegisterRequest request) {
         return authService.register(request);
     }
     @PostMapping("/login")
-    public String login(@RequestBody LoginRequest request) {
-        System.out.println("LOGIN CONTROLLER REACHED");
+    public String login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
     }
 }

@@ -1,4 +1,5 @@
 package com.community.backend.controller;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -35,8 +36,8 @@ public class SafetyController {
         return safetyService.getTrustedContacts(getEmail());
     }
     @PostMapping("/trusted-contacts")
-    public TrustedContactResponse addTrustedContact(@RequestBody TrustedContactRequest request) {
-        return safetyService.addTrustedContact(getEmail(),request.getName(),request.getPhone());
+    public TrustedContactResponse addTrustedContact(@Valid @RequestBody TrustedContactRequest request) {
+        return safetyService.addTrustedContact(getEmail(),request.getName(),request.getPhone(),request.getEmail());
     }
     @DeleteMapping("/trusted-contacts/{id}")
     public void deleteTrustedContact(@PathVariable Long id) {

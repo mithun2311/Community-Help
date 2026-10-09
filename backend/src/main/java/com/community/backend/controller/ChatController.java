@@ -1,7 +1,7 @@
 package com.community.backend.controller;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -10,38 +10,23 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import com.community.backend.dto.ChatMessageRequest;
-import com.community.backend.entity.Chat;
-import com.community.backend.entity.ChatMessage;
+import com.community.backend.dto.ChatMessageResponse;
+import com.community.backend.dto.ChatResponse;
 import com.community.backend.service.ChatService;
+import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api")
 public class ChatController {
-    private ChatService chatService;
-    public ChatController(ChatService chatService) {
-        this.chatService=chatService;
-    }
+    private final ChatService chatService;
+    public ChatController(ChatService chatService) { this.chatService=chatService; }
     @PostMapping("/help-requests/{id}/chat")
-    public Chat getOrCreateChat(@PathVariable Long id) {
-        return chatService.getOrCreateChat(id,getEmail());
-    }
+    public ChatResponse getOrCreateChat(@PathVariable Long id,Authentication authentication) { return ChatResponse.from(chatService.getOrCreateChat(id,authentication.getName())); }
     @GetMapping("/chats/{id}/messages")
-    public List<ChatMessage> getMessages(@PathVariable Long id) {
-        return chatService.getMessages(id,getEmail());
-    }
+    public List<ChatMessageResponse> getMessages(@PathVariable Long id,Authentication authentication) { return chatService.getMessages(id,authentication.getName()).stream().map(ChatMessageResponse::from).collect(Collectors.toList()); }
     @PostMapping("/chats/{id}/messages")
-    public ChatMessage sendMessage(@PathVariable Long id,@RequestBody ChatMessageRequest request) {
-        return chatService.sendMessage(id,request,getEmail());
-    }
+    public ChatMessageResponse sendMessage(@PathVariable Long id,@Valid @RequestBody ChatMessageRequest request,Authentication authentication) { return ChatMessageResponse.from(chatService.sendMessage(id,request,authentication.getName())); }
     @PutMapping("/chats/{id}/end")
-    public Chat endChat(@PathVariable Long id) {
-        return chatService.endChat(id,getEmail());
-    }
+    public ChatResponse endChat(@PathVariable Long id,Authentication authentication) { return ChatResponse.from(chatService.endChat(id,authentication.getName())); }
     @PutMapping("/chats/{id}/block")
-    public Chat blockChat(@PathVariable Long id) {
-        return chatService.blockChat(id,getEmail());
-    }
-    private String getEmail() {
-        Authentication authentication=SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getName();
-    }
+    public ChatResponse blockChat(@PathVariable Long id,Authentication authentication) { return ChatResponse.from(chatService.blockChat(id,authentication.getName())); }
 }

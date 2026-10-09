@@ -5,4 +5,5 @@ import com.community.backend.entity.Report;
 import com.community.backend.entity.ReportStatus;
 public interface ReportRepository extends JpaRepository<Report,Long> {
     List<Report> findByStatusOrderByCreatedAtDesc(ReportStatus status);
+    List<Report> findAllByOrderByCreatedAtDesc();
 }

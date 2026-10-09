@@ -1,6 +1,7 @@
 package com.community.backend.service;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.community.backend.dto.ReportRequest;
 import com.community.backend.entity.ChatMessage;
 import com.community.backend.entity.HelpRequest;
@@ -26,6 +27,7 @@ public class ReportService {
         this.helpRequestRepository=helpRequestRepository;
         this.chatMessageRepository=chatMessageRepository;
     }
+    @Transactional
     public Report reportUser(Long userId,ReportRequest request,String email) {
         User reporter=getUser(email);
         User reported=getUserById(userId);
@@ -41,6 +43,7 @@ public class ReportService {
         report.setCreatedAt(LocalDateTime.now());
         return reportRepository.save(report);
     }
+    @Transactional
     public Report reportRequest(Long requestId,ReportRequest request,String email) {
         User reporter=getUser(email);
         HelpRequest helpRequest=getRequest(requestId);
@@ -54,13 +57,16 @@ public class ReportService {
         report.setCreatedAt(LocalDateTime.now());
         return reportRepository.save(report);
     }
+    @Transactional
     public Report reportMessage(Long messageId,ReportRequest request,String email) {
         User reporter=getUser(email);
         ChatMessage message=chatMessageRepository.findById(messageId).orElseThrow(()->new ResourceNotFoundException("Message not found"));
         validateParticipant(message.getChat().getHelpRequest(),email);
+        if(message.getSender().getEmail().equals(email)) throw new IllegalArgumentException("You cannot report your own message");
         Report report=new Report();
         report.setReportedBy(reporter);
         report.setChatMessage(message);
+        report.setReportedUser(message.getSender());
         report.setType(ReportType.MESSAGE);
         report.setStatus(ReportStatus.OPEN);
         report.setReason(validateReason(request.getReason()));

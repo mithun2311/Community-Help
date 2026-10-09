@@ -1,6 +1,7 @@
 package com.community.backend.service;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.community.backend.dto.RatingRequest;
 import com.community.backend.entity.HelpRequest;
 import com.community.backend.entity.HelpRequestStatus;
@@ -21,6 +22,7 @@ public class RatingService {
         this.helpRequestRepository=helpRequestRepository;
         this.userRepository=userRepository;
     }
+    @Transactional
     public Rating createRating(Long requestId,RatingRequest request,String email) {
         HelpRequest helpRequest=helpRequestRepository.findById(requestId).orElseThrow(()->new ResourceNotFoundException("Help request not found"));
         User rater=getUser(email);

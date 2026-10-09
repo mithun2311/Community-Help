@@ -2,7 +2,9 @@ package com.community.backend.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import com.community.backend.dto.ChatMessageRequest;
+import com.community.backend.dto.ChatMessageResponse;
 import com.community.backend.entity.Chat;
 import com.community.backend.entity.ChatMessage;
 import com.community.backend.entity.ChatStatus;
@@ -21,17 +23,22 @@ public class ChatService {
     private ChatMessageRepository chatMessageRepository;
     private HelpRequestRepository helpRequestRepository;
     private UserRepository userRepository;
-    public ChatService(ChatRepository chatRepository,ChatMessageRepository chatMessageRepository,HelpRequestRepository helpRequestRepository,UserRepository userRepository) {
+    private SimpMessagingTemplate messagingTemplate;
+    public ChatService(ChatRepository chatRepository,ChatMessageRepository chatMessageRepository,HelpRequestRepository helpRequestRepository,UserRepository userRepository,SimpMessagingTemplate messagingTemplate) {
         this.chatRepository=chatRepository;
         this.chatMessageRepository=chatMessageRepository;
         this.helpRequestRepository=helpRequestRepository;
         this.userRepository=userRepository;
+        this.messagingTemplate=messagingTemplate;
     }
     public Chat getOrCreateChat(Long requestId,String email) {
         HelpRequest request=getRequest(requestId);
         validateParticipant(request,email);
         if(request.getHelper()==null) {
             throw new IllegalStateException("A helper must be assigned before chat can start");
+        }
+        if(request.getStatus()==HelpRequestStatus.COMPLETED || request.getStatus()==HelpRequestStatus.CANCELLED || request.getStatus()==HelpRequestStatus.EXPIRED || request.getStatus()==HelpRequestStatus.DISPUTED) {
+            throw new IllegalStateException("Chat cannot be started for a closed help request");
         }
         return chatRepository.findByHelpRequest(request).orElseGet(()->{
             Chat chat=new Chat();
@@ -49,6 +56,10 @@ public class ChatService {
         if(chat.getStatus()!=ChatStatus.ACTIVE) {
             throw new IllegalStateException("Chat is not active");
         }
+        HelpRequestStatus requestStatus=chat.getHelpRequest().getStatus();
+        if(requestStatus==HelpRequestStatus.COMPLETED || requestStatus==HelpRequestStatus.CANCELLED || requestStatus==HelpRequestStatus.EXPIRED || requestStatus==HelpRequestStatus.DISPUTED) {
+            throw new IllegalStateException("Chat is closed because the help request has ended");
+        }
         if(request.getContent()==null || request.getContent().trim().isEmpty()) {
             throw new IllegalArgumentException("Message cannot be empty");
         }
@@ -61,7 +72,9 @@ public class ChatService {
         message.setSender(sender);
         message.setContent(request.getContent().trim());
         message.setSentAt(LocalDateTime.now());
-        return chatMessageRepository.save(message);
+        message=chatMessageRepository.save(message);
+        messagingTemplate.convertAndSend("/topic/chats/"+chat.getId(),ChatMessageResponse.from(message));
+        return message;
     }
     public List<ChatMessage> getMessages(Long chatId,String email) {
         Chat chat=getChat(chatId);
